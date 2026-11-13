@@ -51,13 +51,15 @@ root@<VPS 主机>`。队列目录：`<槽位目录>/queues/{inbox,outbox,sent,fa
    唤醒会话内做完、群里直接回。若新开对话不可行，退回在唤醒会话内
    做完、群里报结果，不因此卡住。
 7. 写回复：经 SSH 原子写入 outbox（写 `.tmp` 再改名为
-   `reply-<时间戳>-<随机>.json`），内容 `{"text": "...", "mentions": [],
-   "reply_to_message_id": "<原 message_id>"}`。写完立即对该文件执行
+   `reply-<时间戳>-<随机>.json`），内容 `{"text": "...", "mentions":
+   [...], "reply_to_message_id": "<原 message_id>"}`。写完立即对该文件执行
    `chown 1000:1000` + `chmod 644`：relay 容器以 uid 1000 运行，root
    传上去的文件默认 root 属主、容器读不到，回复会静默卡在 outbox。
-   默认 mentions 为空（回复
-   关联已足够）；需 @ 某人时 mentions 填 `{"id": "<open_id>", "name":
-   "<名>"}`，ID 只能用本 slot inbox 里实测到的，绝不猜，绝不用另一
+   @ 规则：原消息发送者是真人（`sender.id_type` 为 `open_id`）时，
+   mentions 带上 `{"id": "<发送者 open_id>", "name": ""}`，即回复时
+   @ 对方（name 留空、飞书按 ID 显示名字）；发送者是机器人
+   （`id_type` 为 `app_id`）时 mentions 为空，避免互相叫醒。需主动
+   @ 某人时，ID 只能用本 slot inbox 里实测到的，绝不猜，绝不用另一
    机器人视角的 ID。
 8. 等约 70 秒后验 `sent/`：确认回复已发出（`sent/` 记录的
    `original.reply_to_message_id` 匹配）、无重复。验到后在摘要里报发出
