@@ -480,7 +480,7 @@ class PlatformHandler(http.server.BaseHTTPRequestHandler):
                "history_allowed": "history_allowed" in params,
                "created_at": int(time.time())}
         config = {"app_id": submitted_app_id, "app_secret": submitted_app_secret,
-                  "chat_id": submitted_chat_id, "poll_interval": 60}
+                  "chat_id": submitted_chat_id, "poll_interval": 10}
         cfg_file = SLOTS_DIR / slot / "config" / "config.json"
         cfg_file.parent.mkdir(parents=True, exist_ok=True)
         with LOCK:
@@ -519,7 +519,7 @@ class PlatformHandler(http.server.BaseHTTPRequestHandler):
             return self.send_error_page(400, err + " Please select a group from the dropdown or type an oc_ chat ID.")
 
         # 保留现有 poll_interval
-        poll_interval = existing_config.get("poll_interval", 60)
+        poll_interval = existing_config.get("poll_interval", 10)
 
         config = {
             "app_id": app_id,
@@ -566,7 +566,7 @@ class PlatformHandler(http.server.BaseHTTPRequestHandler):
             "app_id": PLACEHOLDER_APP_ID,
             "app_secret": PLACEHOLDER_APP_SECRET,
             "chat_id": PLACEHOLDER_CHAT_ID,
-            "poll_interval": 60,
+            "poll_interval": 10,
         })
         with LOCK:
             tokens = load_tokens()
