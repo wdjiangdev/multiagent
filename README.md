@@ -167,7 +167,7 @@ UI 只写文件、不碰 Docker；删除机器人在 UI 里做，状态归档到
 Muse 干活；没新 @ 时不唤醒、不烧额度。
 
 - 你的 Muse（有 SSH）：watcher 脚本经 SSH 扫 inbox 目录，见 `watcher/`。
-  唤醒指令模板见 `watcher/wake-prompt.md`（含额度红线、历史口径、
+  唤醒指令模板见 [watcher/wake-prompt.md](watcher/wake-prompt.md)（含额度红线、历史口径、
   去重、默认直接做、大任务单开对话等规则，按需改）。
 - 朋友的 Muse（无 SSH）：watcher 轮询平台 API 的 inbox（带 `since`），
   规则同款，见 `docs/friend-brief-template.md`。
@@ -181,7 +181,7 @@ watcher 必须用 hook（最小间隔 5 秒），不要用 cron（最小粒度 1
 朋友要做的只有两件事：
 
 1. 经私密渠道拿到令牌，存进他家 Muse 的安全凭证（不粘贴到聊天）。
-2. 把 `docs/friend-brief-template.md` 全文粘贴给他家 Muse，让它按说明
+2. 把[朋友接入说明模板](docs/friend-brief-template.md)全文粘贴给他家 Muse，让它按说明
    建 watcher 并验收。
 
 朋友不需要注册飞书、建应用、登录飞书、备主机、配 SSH。
