@@ -270,6 +270,11 @@ watcher 必须用 hook（最小间隔 5 秒），不要用 cron（最小粒度 1
     relay 热重载改配置不用重启，但要验日志 `poll ok`。
 23. **隧道/hostname 若 API 权限不足**，去 Cloudflare dashboard 手动加，
     不要在 VPS 上硬配 ingress。
+24. **Muse 侧 VM 替换会造成 watcher 空窗**（2026-11-14 实测 2 小时
+    23 分），队列本身不丢消息、恢复后自动补唤醒。`watchdog/` 下的
+    兜底脚本每 2 分钟扫一次：@ 机器人的消息超过 10 分钟无人回复，
+    就在群里发一条不带引用的独立提醒（不影响恢复后的正式回复，
+    提醒文件写进 outbox 后同样要 `chown 1000:1000 + chmod 644`）。
 
 ### 协作规矩
 
@@ -324,6 +329,8 @@ multiagent/
 │   ├── watch.sh.template      # hook 轮询脚本模板（有 SSH 版）
 │   ├── wake-prompt.md         # 唤醒指令模板
 │   └── README.md
+├── watchdog/                  # 兜底提醒：Muse 侧停摆时群里发独立提醒
+│   └── holding-notice.py      # VPS cron 每 2 分钟跑，见 README 第 24 条
 └── docs/
     ├── friend-brief-template.md  # 给朋友的 Muse 的接入说明模板
     └── feishu-api-notes.md       # 实测过的飞书 API 事实
