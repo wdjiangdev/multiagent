@@ -6,6 +6,7 @@
 API 文档来源（必须按文档核实，代码注释写文档 URL）：
 - tenant_access_token: https://open.feishu.cn/document/server-docs/authentication-management/access-token/tenant_access_token_internal
 - 历史消息: https://open.feishu.cn/document/server-docs/im-v1/message/list
+- 获取单条消息: https://open.feishu.cn/document/server-docs/im-v1/message/get
 - 发送消息: https://open.feishu.cn/document/server-docs/im-v1/message/create
 - 回复消息: https://open.feishu.cn/document/server-docs/im-v1/message/reply
 - 列出群: https://open.feishu.cn/document/server-docs/group/chat/list
@@ -17,6 +18,7 @@ OPEN QUESTION 记录（核实不清的细节，绝不编造）：
 3. list-chats 需要的权限：文档列出 im:chat / im:chat:readonly / im:chat:read，实测哪个最小通过？兜底：三个都在注释里写上，运行时报错再补。
 4. 历史消息分页 page_token 与 watermark 配合的最佳实践？文档说 sort_type=ByCreateTimeAsc 时 page_token 固定。兜底：首轮不用 page_token，后续若 has_more 则存 page_token 到 watermark.json。
 5. 回复消息 reply_in_thread 默认 false，文档说"如果要回复的消息已经是话题形式的消息，则默认以话题形式进行回复"。兜底：outbox 不传则 false，显式传 true 时带上。
+6. 引用回复的 parent_id：文档称消息对象带 parent_id（被引用消息 id）。兜底：process_inbox 仅在 parent_id 存在时拉父消息；若 list 接口实测不返回 parent_id，则 quoted 恒为 None，需另查。
 """
 
 import argparse
@@ -280,6 +282,56 @@ def fetch_messages(
     return items, new_wm
 
 
+def get_message(token: str, message_id: str) -> Dict[str, Any]:
+    """
+    获取单条消息详情（用于取被引用消息的原文）
+    Doc: https://open.feishu.cn/document/server-docs/im-v1/message/get
+    返回: 消息对象 dict（无消息时抛 RuntimeError）
+    """
+    url = f"{FEISHU_BASE}/im/v1/messages/{message_id}"
+    headers = {"Authorization": f"Bearer {token}"}
+    code, resp = http_request("GET", url, headers=headers)
+    if code != 200 or resp.get("code") != 0:
+        raise RuntimeError(f"get_message failed: code={code}, resp={resp}")
+    data = resp.get("data", {})
+    items = data.get("items", [])
+    if not items:
+        raise RuntimeError(f"get_message empty: message_id={message_id}")
+    return items[0]
+
+
+def fetch_quoted_message(token: str, msg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    若 msg 是引用回复（带 parent_id），拉取被引用消息的原文，返回与 inbox 记录同形的 quoted 记录。
+    失败时返回 None（不阻塞轮询）；非引用消息返回 None。
+    引用回复的 parent_id 即被引用消息的 message_id；root_id 为话题根消息（有则一并记录）。
+    """
+    parent_id = msg.get("parent_id")
+    if not parent_id:
+        return None
+    try:
+        parent = get_message(token, parent_id)
+    except Exception as e:
+        print(f"[relay] fetch quoted {parent_id} failed: {e}", file=sys.stderr)
+        return None
+    body = parent.get("body", {})
+    content_str = body.get("content", "{}")
+    try:
+        content = json.loads(content_str)
+    except json.JSONDecodeError:
+        content = {"raw": content_str}
+    return {
+        "message_id": parent.get("message_id"),
+        "sender": {
+            "id": parent.get("sender", {}).get("id"),
+            "id_type": parent.get("sender", {}).get("id_type"),
+            "sender_type": parent.get("sender", {}).get("sender_type"),
+        },
+        "content": content,
+        "create_time": parent.get("create_time"),
+    }
+
+
 def send_message(
     token: str, chat_id: str, text: str, mentions: Optional[List[Dict[str, Any]]] = None
 ) -> Dict[str, Any]:
@@ -474,8 +526,9 @@ def is_self_message(msg: Dict[str, Any], app_id: str, sent_ids: Optional[set] = 
     return False
 
 
-def extract_inbox_record(msg: Dict[str, Any]) -> Dict[str, Any]:
-    """从飞书消息提取 inbox 记录（不截断）"""
+def extract_inbox_record(msg: Dict[str, Any], quoted: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """从飞书消息提取 inbox 记录（不截断）。
+    引用回复时 quoted 为被引用消息的同形记录；无引用时为 None。"""
     body = msg.get("body", {})
     content_str = body.get("content", "{}")
     try:
@@ -504,6 +557,9 @@ def extract_inbox_record(msg: Dict[str, Any]) -> Dict[str, Any]:
         "mentions": mentions_out,
         "content": content,
         "create_time": msg.get("create_time"),
+        "parent_id": msg.get("parent_id"),
+        "root_id": msg.get("root_id"),
+        "quoted": quoted,
     }
 
 
@@ -531,7 +587,8 @@ def process_inbox(token: str, config: Dict[str, Any], app_id: str, sent_ids: Opt
         if is_self_message(msg, app_id, sent_ids=sent_ids):
             add_seen(mid)
             continue
-        record = extract_inbox_record(msg)
+        quoted = fetch_quoted_message(token, msg) if msg.get("parent_id") else None
+        record = extract_inbox_record(msg, quoted=quoted)
         write_inbox(record)
         add_seen(mid)
         new_count += 1
@@ -973,6 +1030,54 @@ def run_self_test() -> int:
                 globals()["list_chats"] = _orig_lc2
                 _last_discover_attempt_mono = 0.0
             print("  [ok] discovery throttle + failure keeps chats.json")
+
+            # 13. 引用回复透传：extract_inbox_record 带 parent_id/root_id/quoted；
+            #     fetch_quoted_message 拉父消息（mock get_message），失败返回 None 不抛
+            msg_reply = {
+                "message_id": "om_reply",
+                "sender": {"id": "ou_123", "id_type": "open_id", "sender_type": "user"},
+                "mentions": [],
+                "body": {"msg_type": "text", "content": json.dumps({"text": "针对这条回复"}, ensure_ascii=False)},
+                "create_time": "1794575415754",
+                "parent_id": "om_parent",
+                "root_id": "om_parent",
+            }
+            rec_plain = extract_inbox_record(msg_reply)
+            assert rec_plain["parent_id"] == "om_parent"
+            assert rec_plain["root_id"] == "om_parent"
+            assert rec_plain["quoted"] is None
+            _orig_gm = get_message
+            gm_calls = []
+            def _fake_get_message(token, message_id):
+                gm_calls.append((token, message_id))
+                return {
+                    "message_id": "om_parent",
+                    "sender": {"id": "ou_999", "id_type": "open_id", "sender_type": "user"},
+                    "body": {"msg_type": "text", "content": json.dumps({"text": "被引用的原文"}, ensure_ascii=False)},
+                    "create_time": "1794575300000",
+                }
+            try:
+                globals()["get_message"] = _fake_get_message
+                quoted = fetch_quoted_message("tok_fake", msg_reply)
+                assert quoted is not None
+                assert quoted["message_id"] == "om_parent"
+                assert quoted["sender"]["id"] == "ou_999"
+                assert quoted["content"] == {"text": "被引用的原文"}
+                assert gm_calls == [("tok_fake", "om_parent")]
+                rec_quoted = extract_inbox_record(msg_reply, quoted=quoted)
+                assert rec_quoted["quoted"]["content"] == {"text": "被引用的原文"}
+                # 非引用消息不调 get_message
+                gm_calls.clear()
+                assert fetch_quoted_message("tok_fake", {"message_id": "om_x"}) is None
+                assert gm_calls == []
+                # 父消息拉取失败返回 None、不抛异常
+                def _failing_get_message(token, message_id):
+                    raise RuntimeError("get_message failed: code=400")
+                globals()["get_message"] = _failing_get_message
+                assert fetch_quoted_message("tok_fake", msg_reply) is None
+            finally:
+                globals()["get_message"] = _orig_gm
+            print("  [ok] quoted reply passthrough (parent_id/root_id/quoted, fetch failure tolerated)")
 
             print("[self-test] ALL PASSED")
             return 0

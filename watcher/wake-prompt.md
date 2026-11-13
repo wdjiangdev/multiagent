@@ -26,6 +26,9 @@ root@<VPS 主机>`。队列目录：`<槽位目录>/queues/{inbox,outbox,sent,fa
    忽略未 @本机器人的；忽略自己发的（message_id 出现在 `sent/` 任一记录
    的 message_id 字段里——中转已过滤自消息，此为双保险）。
    注意：open_id 因 app 而异，只认本 app 视角的 ID。
+   引用回复：inbox 记录带 `quoted` 字段且不为 null 时是引用回复，先读
+   `quoted` 里的被引用原文（`quoted.content`）与发送人（`quoted.sender`），
+   再结合新消息内容作答；`quoted` 为 null 或缺失时无引用。
 3. 去重：写回复前查 `sent/` 各记录 `original.reply_to_message_id` 与
    `outbox/` 各任务 `reply_to_message_id`，已有针对该 message_id 的最终
    回复或待发最终回复则跳过，绝不重复回。「确认收到」类的 ack 不算最终
