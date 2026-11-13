@@ -1,0 +1,13 @@
+# 忽略一切运行时产生的文件：配置、状态、队列、后台数据、缓存。
+# 密钥绝不进仓库。提交前 grep 一遍 cli_/oc_/ou_/真实域名。
+config.json
+config/
+state/
+queues/
+data/
+setup-token.txt
+setup_token_hash.json
+*.bak-*
+__pycache__/
+*.pyc
+.DS_Store

@@ -1,0 +1,23 @@
+services:
+  relay:
+    build: .
+    image: feishu-relay:latest
+    container_name: feishu-relay
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./config:/app/config:ro
+      - ./state:/app/state
+      - ./queues:/app/queues
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

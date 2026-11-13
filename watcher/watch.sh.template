@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# 机器人自动回复 watcher 模板（有 SSH 版）：轻量轮询，每 N 秒经 SSH 扫一次
+# 该机器人的 inbox 目录，仅当出现新的 @机器人 消息时唤醒 agent；无新 @ 时绝不唤醒。
+# 首次运行建基线（把已在 inbox 的消息记为已见，不唤醒），之后只对新消息唤醒。
+# SSH 失败/超时/输出异常一律记日志后 silent，不唤醒、不打扰。
+# dry-run（HATCH_HOOK_DRY_RUN=1）时不写状态，避免消耗检测。
+#
+# 使用：复制为 watcher 脚本，改掉下面三处占位符，按 watcher/README.md 挂成 hook。
+# 间隔建议 10 秒（hook 最小 5 秒；不要用 cron，最小粒度 1 分钟）。
+set -euo pipefail
+source "$HATCH_HOOK_RUNTIME"
+
+BOT_OPEN_ID="ou_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"   # TODO：填该机器人视角下自己的 open_id（从 inbox 实测）
+SSH_HOST="root@YOUR_VPS_IP"                         # TODO：填中转所在主机
+INBOX_DIR="/opt/docker/feishu-relay/queues/inbox"   # TODO：该机器人槽位的 inbox 目录
+SSH_KEY="$HOME/.ssh/id_ed25519"
+
+scan="$(timeout 25 ssh -i "$SSH_KEY" \
+  -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+  -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes \
+  "$SSH_HOST" python3 - <<PYEOF 2>/dev/null
+import json, glob, os
+out = []
+for p in sorted(glob.glob("$INBOX_DIR/*.json")):
+    try:
+        with open(p) as f:
+            r = json.load(f)
+    except Exception:
+        continue
+    ms = r.get("mentions") or []
+    at = any(isinstance(m, dict) and m.get("id") == "$BOT_OPEN_ID" for m in ms)
+    out.append({"id": r.get("message_id") or os.path.basename(p)[:-5],
+                "at": at, "ct": str(r.get("create_time", ""))})
+out.sort(key=lambda x: x["ct"])
+print(json.dumps(out))
+PYEOF
+)" || {
+  log "ssh scan failed" '{}'
+  silent "ssh scan failed (inconclusive)" '{}'
+  exit 0
+}
+
+if ! printf '%s' "$scan" | jq -e 'type == "array"' >/dev/null 2>&1; then
+  log "scan output invalid" '{}'
+  silent "scan output invalid (inconclusive)" '{}'
+  exit 0
+fi
+
+state="$(hook_state_get)"
+initialized="$(printf '%s' "$state" | jq -r '.initialized // false')"
+seen="$(printf '%s' "$state" | jq -c '.seen // []')"
+
+# 顺序去重合并已见集合，上限 1000（与 relay seen.json 语义一致）
+next_seen="$(printf '%s' "$scan" | jq -c --argjson seen "$seen" \
+  '([$seen[], .[].id] | reduce .[] as $x ([]; if index($x) then . else . + [$x] end)) | .[-1000:]')"
+new_at="$(printf '%s' "$scan" | jq -c --argjson seen "$seen" \
+  '[.[] | select(.at == true) | select(.id as $id | $seen | index($id) | not) | .id]')"
+inbox_count="$(printf '%s' "$scan" | jq -r 'length')"
+
+save_state() {
+  if [[ "${HATCH_HOOK_DRY_RUN:-0}" != "1" ]]; then
+    hook_state_set "$(jq -cn --argjson seen "$next_seen" '{initialized: true, seen: $seen}')"
+  fi
+}
+
+if [[ "$initialized" != "true" ]]; then
+  save_state
+  log "baseline established" "{\"inbox_count\": $inbox_count}"
+  silent "baseline established, no wake on existing messages" "{\"inbox_count\": $inbox_count}"
+  exit 0
+fi
+
+new_count="$(printf '%s' "$new_at" | jq -r 'length')"
+if [[ "$new_count" -gt 0 ]]; then
+  save_state
+  log "new @bot messages" "{\"message_ids\": $new_at}"
+  wake "new @bot message(s) in Feishu group" "{\"message_ids\": $new_at}"
+  exit 0
+fi
+
+save_state
+silent "no new @bot messages" "{\"inbox_count\": $inbox_count}"
+exit 0

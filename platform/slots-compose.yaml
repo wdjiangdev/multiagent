@@ -1,0 +1,111 @@
+services:
+  slot1:
+    image: feishu-relay:latest
+    container_name: feishu-relay-slot1
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # President：零拷贝接管既有目录（watermark/seen/inbox 历史全保留）
+      - /opt/docker/feishu-relay/config:/app/config:ro
+      - /opt/docker/feishu-relay/state:/app/state
+      - /opt/docker/feishu-relay/queues:/app/queues
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  slot2:
+    image: feishu-relay:latest
+    container_name: feishu-relay-slot2
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./slots/slot2/config:/app/config:ro
+      - ./slots/slot2/state:/app/state
+      - ./slots/slot2/queues:/app/queues
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  slot3:
+    image: feishu-relay:latest
+    container_name: feishu-relay-slot3
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./slots/slot3/config:/app/config:ro
+      - ./slots/slot3/state:/app/state
+      - ./slots/slot3/queues:/app/queues
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  slot4:
+    image: feishu-relay:latest
+    container_name: feishu-relay-slot4
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./slots/slot4/config:/app/config:ro
+      - ./slots/slot4/state:/app/state
+      - ./slots/slot4/queues:/app/queues
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  slot5:
+    image: feishu-relay:latest
+    container_name: feishu-relay-slot5
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./slots/slot5/config:/app/config:ro
+      - ./slots/slot5/state:/app/state
+      - ./slots/slot5/queues:/app/queues
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
