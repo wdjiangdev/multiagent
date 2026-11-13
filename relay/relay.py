@@ -51,7 +51,7 @@ HEALTH_FILE = STATE_DIR / "health.json"
 FEISHU_BASE = "https://open.feishu.cn/open-apis"
 
 # 默认轮询间隔（秒），可被 config.json 或环境变量覆盖
-DEFAULT_POLL_INTERVAL = 60
+DEFAULT_POLL_INTERVAL = 10
 
 # 占位符检测
 PLACEHOLDER_APP_ID = "REPLACE_ME_APP_ID"
