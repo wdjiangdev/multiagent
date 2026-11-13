@@ -227,7 +227,9 @@ watcher 必须用 hook（最小间隔 5 秒），不要用 cron（最小粒度 1
    `600` 且属主为 uid 1000。root 用临时文件改名方式重写会把属主改成
    root，容器立刻 `PermissionError` crash-loop，两个机器人同时停摆。
    改配置要原地编辑；若已重写，补 `chown 1000:1000` + `chmod 600`
-   再重启容器。改完验 `health.json` 的 `last_poll_time` 在走。
+   再重启容器。改完验 `health.json` 的 `last_poll_time` 在走。同一坑
+   也发生在 outbox：root 写入的回复文件默认 root:root 640，容器读不
+   到、回复静默卡住，写完须补 `chown 1000:1000` + `chmod 644`。
 9. **令牌只显示一次、只存哈希**。泄露或不用时立即在后台吊销/轮换。
 10. **仓库里绝不能有密钥**。`.gitignore` 已挡住 `config.json`、
     `state/`、`queues/`、`data/`；提交前 grep 一遍。

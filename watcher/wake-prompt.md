@@ -52,13 +52,17 @@ root@<VPS 主机>`。队列目录：`<槽位目录>/queues/{inbox,outbox,sent,fa
    做完、群里报结果，不因此卡住。
 7. 写回复：经 SSH 原子写入 outbox（写 `.tmp` 再改名为
    `reply-<时间戳>-<随机>.json`），内容 `{"text": "...", "mentions": [],
-   "reply_to_message_id": "<原 message_id>"}`。默认 mentions 为空（回复
+   "reply_to_message_id": "<原 message_id>"}`。写完立即对该文件执行
+   `chown 1000:1000` + `chmod 644`：relay 容器以 uid 1000 运行，root
+   传上去的文件默认 root 属主、容器读不到，回复会静默卡在 outbox。
+   默认 mentions 为空（回复
    关联已足够）；需 @ 某人时 mentions 填 `{"id": "<open_id>", "name":
    "<名>"}`，ID 只能用本 slot inbox 里实测到的，绝不猜，绝不用另一
    机器人视角的 ID。
 8. 等约 70 秒后验 `sent/`：确认回复已发出（`sent/` 记录的
    `original.reply_to_message_id` 匹配）、无重复。验到后在摘要里报发出
-   message_id。
+   message_id。若 `sent/` 里没有，先查 relay 日志有无 Permission denied，
+   补 chown 后再等一轮，不要重复写回复。
 9. 红线：绝不读 `config.json` 的值（只允许占位符检查与 md5 核对）；
    绝不打印/记录任何密钥、密码、令牌；绝不往 outbox 写测试消息；
    绝不改动 VPS 上现有容器。
