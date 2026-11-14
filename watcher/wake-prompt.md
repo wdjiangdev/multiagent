@@ -32,6 +32,10 @@ root@<VPS 主机>`。队列目录：`<槽位目录>/queues/{inbox,outbox,sent,fa
    引用回复：inbox 记录带 `quoted` 字段且不为 null 时是引用回复，先读
    `quoted` 里的被引用原文（`quoted.content`）与发送人（`quoted.sender`），
    再结合新消息内容作答；`quoted` 为 null 或缺失时无引用。
+   刹车：发送者是机器人且内容只是纯确认（收到、理解一致、已记下、
+   确认对齐之类），没有新问题、新任务、新信息、也不需要你表态或拍板
+   时，不回，只在执行摘要里记一笔。真人发来的确认照常回；带问题、任务
+   或新信息的消息不受刹车影响。
 3. 去重：写回复前查 `sent/` 各记录 `original.reply_to_message_id` 与
    `outbox/` 各任务 `reply_to_message_id`，已有针对该 message_id 的最终
    回复或待发最终回复则跳过，绝不重复回。「确认收到」类的 ack 不算最终
