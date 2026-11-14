@@ -12,6 +12,8 @@
   否则容器内 uid 1000 的 relay 读不到（2026-11-13 实踩）。
 - 幂等：已提醒过的 message_id 记入 state 文件，不重复提醒；一次
   运行最多发一条提醒，覆盖本轮全部积压消息。
+- 多机器人：每个 slot 跑一个实例，传各自的队列目录与本 slot 视角
+  的机器人 ID（--bot-open-id/--bot-app-id），state 文件各用各的。
 """
 import argparse
 import glob
@@ -22,9 +24,10 @@ import time
 import uuid
 
 # 部署时填本机器人视角的真实 ID（从本 slot 的 inbox 记录里实测，
-# open_id 因 app 而异，绝不用另一机器人视角的 ID）
-TRUMP_OPEN_ID = "ou_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"  # 本机器人 open_id
-TRUMP_APP_ID = "cli_xxxxxxxxxxxxxxxx"  # 本机器人 app_id，跳过自身消息
+# open_id 因 app 而异，绝不用另一机器人视角的 ID；多机器人时用
+# --bot-open-id/--bot-app-id 给每个实例传各自的 ID）
+DEFAULT_BOT_OPEN_ID = "ou_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"  # 本机器人 open_id
+DEFAULT_BOT_APP_ID = "cli_xxxxxxxxxxxxxxxx"  # 本机器人 app_id，跳过自身消息
 NOTICE_TEXT = "我这边暂时没法回复，消息已收到，恢复后会第一时间回复。"
 
 
@@ -49,6 +52,10 @@ def main():
     ap.add_argument("--outbox", default="/opt/docker/feishu-relay/queues/outbox")
     ap.add_argument("--sent", default="/opt/docker/feishu-relay/queues/sent")
     ap.add_argument("--state", default="/opt/docker/feishu-relay/state/holding-notices.json")
+    ap.add_argument("--bot-open-id", default=DEFAULT_BOT_OPEN_ID,
+                    help="本 slot 视角的机器人 open_id（mentions 匹配用）")
+    ap.add_argument("--bot-app-id", default=DEFAULT_BOT_APP_ID,
+                    help="本机器人 app_id（跳过自身消息用）")
     ap.add_argument("--threshold", type=int, default=600, help="超过多少秒未回复则提醒")
     ap.add_argument("--max-age", type=int, default=21600, help="只看最近多少秒内的消息")
     ap.add_argument("--dry-run", action="store_true")
@@ -94,10 +101,10 @@ def main():
         if not mid or mid in replied or mid in pending or mid in noticed_set:
             continue
         sender = r.get("sender") or {}
-        if not sender.get("id") or sender.get("id") == TRUMP_APP_ID:
+        if not sender.get("id") or sender.get("id") == args.bot_app_id:
             continue
         mentions = r.get("mentions") or []
-        at = any(isinstance(m, dict) and m.get("id") == TRUMP_OPEN_ID for m in mentions)
+        at = any(isinstance(m, dict) and m.get("id") == args.bot_open_id for m in mentions)
         if not at:
             continue
         try:
