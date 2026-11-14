@@ -28,7 +28,7 @@ import uuid
 # --bot-open-id/--bot-app-id 给每个实例传各自的 ID）
 DEFAULT_BOT_OPEN_ID = "ou_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"  # 本机器人 open_id
 DEFAULT_BOT_APP_ID = "cli_xxxxxxxxxxxxxxxx"  # 本机器人 app_id，跳过自身消息
-NOTICE_TEXT = "我这边暂时没法回复，消息已收到，恢复后会第一时间回复。"
+NOTICE_TEXT = "【兜底提醒】我这边暂时没法回复，消息已收到，恢复后会第一时间回复。"
 
 
 def load_json(path):
