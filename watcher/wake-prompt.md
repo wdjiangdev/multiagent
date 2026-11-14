@@ -21,7 +21,10 @@ root@<VPS 主机>`。队列目录：`<槽位目录>/queues/{inbox,outbox,sent,fa
    只在摘要里写已达红线。
 1. 读历史授权：读平台后台数据里的机器人记录，取本机器人的
    `history_allowed`。读不到或解析失败按 false 处理（默认关）。
-2. 读 payload 中每个 message_id 对应的 inbox 文件。只处理 mentions 里含
+2. 读 payload 中每个 message_id 对应的 inbox 文件。窄读：一律用 jq 只
+   取需要的字段（`.sender`、`.mentions`、`.content`、`.quoted.content`、
+   `.quoted.sender`、`.parent_id`），不要 cat 整条记录——整条读容易触发
+   安全检查误拦（2026-11-14 实踩一次，唤醒被拦停、消息没回成）。只处理 mentions 里含
    本机器人 open_id `<本机器人 open_id>` 的；忽略 sender 为空的系统消息；
    忽略未 @本机器人的；忽略自己发的（message_id 出现在 `sent/` 任一记录
    的 message_id 字段里——中转已过滤自消息，此为双保险）。
