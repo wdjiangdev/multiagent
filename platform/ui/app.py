@@ -193,6 +193,45 @@ def config_filled(config):
     )
 
 
+def shape_sent_record(rec):
+    """sent/ 原始记录 -> API 输出形状：只含查历史需要的字段，
+    不带 response 全量回执。无 message_id 的记录返回 None。"""
+    if not isinstance(rec, dict) or not rec.get("message_id"):
+        return None
+    orig = rec.get("original") or {}
+    if not isinstance(orig, dict):
+        orig = {}
+    try:
+        sent_at = int(rec.get("sent_at") or 0)
+    except (ValueError, TypeError):
+        sent_at = 0
+    mentions = orig.get("mentions") or []
+    if not isinstance(mentions, list):
+        mentions = []
+    return {
+        "message_id": rec.get("message_id"),
+        "sent_at": sent_at,
+        "reply_to_message_id": orig.get("reply_to_message_id"),
+        "text": orig.get("text", "") if isinstance(orig.get("text", ""), str) else "",
+        "mentions": mentions,
+    }
+
+
+def paginate_records(records, query):
+    """since/limit 游标分页：inbox 与 sent 列表同一语义。"""
+    since = query.get("since", [""])[0]
+    if since:
+        idx = next((i for i, r in enumerate(records) if r.get("message_id") == since), None)
+        if idx is not None:
+            records = records[idx + 1:]
+    try:
+        limit = int(query.get("limit", ["50"])[0])
+    except ValueError:
+        limit = 50
+    limit = max(1, min(200, limit))
+    return records[:limit]
+
+
 # ============== API 令牌 ==============
 
 def load_tokens():
@@ -625,18 +664,24 @@ class PlatformHandler(http.server.BaseHTTPRequestHandler):
         return bot
 
     def handle_api_get(self, path, query):
-        m = re.match(r"^/api/v1/([A-Za-z0-9_-]+)/(inbox|health|settings)$", path)
-        m_one = re.match(r"^/api/v1/([A-Za-z0-9_-]+)/inbox/([A-Za-z0-9_-]+)$", path)
+        m = re.match(r"^/api/v1/([A-Za-z0-9_-]+)/(inbox|health|settings|sent)$", path)
+        m_one = re.match(r"^/api/v1/([A-Za-z0-9_-]+)/(inbox|sent)/([A-Za-z0-9_-]+)$", path)
         if m_one:
-            slug, mid = m_one.group(1), m_one.group(2)
+            slug, kind, mid = m_one.group(1), m_one.group(2), m_one.group(3)
             bot = self._api_auth(slug)
             if not bot or not MSG_ID_RE.match(mid):
                 return self.send_json(404, {"error": "not_found"})
-            fpath = bot_queues_dir(bot) / "inbox" / f"{mid}.json"
-            rec = read_json(fpath, None)
-            if rec is None:
-                return self.send_json(404, {"error": "not_found"})
-            return self.send_json(200, rec)
+            if kind == "inbox":
+                fpath = bot_queues_dir(bot) / "inbox" / f"{mid}.json"
+                rec = read_json(fpath, None)
+                if rec is None:
+                    return self.send_json(404, {"error": "not_found"})
+                return self.send_json(200, rec)
+            for fpath in (bot_queues_dir(bot) / "sent").glob("*.json"):
+                shaped = shape_sent_record(read_json(fpath, None))
+                if shaped is not None and shaped["message_id"] == mid:
+                    return self.send_json(200, shaped)
+            return self.send_json(404, {"error": "not_found"})
         if not m:
             return self.send_json(404, {"error": "not_found"})
         slug, action = m.group(1), m.group(2)
@@ -651,6 +696,18 @@ class PlatformHandler(http.server.BaseHTTPRequestHandler):
                 "name": bot.get("name", slug),
                 "history_allowed": bool(bot.get("history_allowed", False)),
             })
+        if action == "sent":
+            sent_dir = bot_queues_dir(bot) / "sent"
+            records = []
+            if sent_dir.exists():
+                for fpath in sent_dir.glob("*.json"):
+                    shaped = shape_sent_record(read_json(fpath, None))
+                    if shaped is not None:
+                        records.append(shaped)
+            records.sort(key=lambda r: (r["sent_at"], r["message_id"]))
+            records = paginate_records(records, query)
+            print(f"[api] sent list: {slug} count={len(records)}")
+            return self.send_json(200, {"messages": records, "count": len(records)})
         # inbox 列表
         inbox_dir = bot_queues_dir(bot) / "inbox"
         records = []
@@ -665,17 +722,7 @@ class PlatformHandler(http.server.BaseHTTPRequestHandler):
             except (ValueError, TypeError):
                 return 0
         records.sort(key=lambda r: (_ct(r), r.get("message_id", "")))
-        since = query.get("since", [""])[0]
-        if since:
-            idx = next((i for i, r in enumerate(records) if r.get("message_id") == since), None)
-            if idx is not None:
-                records = records[idx + 1:]
-        try:
-            limit = int(query.get("limit", ["50"])[0])
-        except ValueError:
-            limit = 50
-        limit = max(1, min(200, limit))
-        records = records[:limit]
+        records = paginate_records(records, query)
         print(f"[api] inbox list: {slug} count={len(records)}")
         return self.send_json(200, {"messages": records, "count": len(records)})
 

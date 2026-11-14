@@ -152,6 +152,8 @@ slot1 挂载既有 `/opt/docker/feishu-relay/{config,state,queues}`（零拷贝
 ```
 GET  /api/v1/<bot>/inbox?since=<message_id>&limit=<1..200>
 GET  /api/v1/<bot>/inbox/<message_id>
+GET  /api/v1/<bot>/sent?since=<message_id>&limit=<1..200>
+GET  /api/v1/<bot>/sent/<message_id>
 POST /api/v1/<bot>/outbox        # 32KB 上限，30 次/分钟
 GET  /api/v1/<bot>/health
 GET  /api/v1/<bot>/settings      # {"bot", "name", "history_allowed"}，无密钥

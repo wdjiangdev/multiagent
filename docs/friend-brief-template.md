@@ -38,6 +38,9 @@ API 令牌另经私密渠道给，不在说明里，不发群里、不发聊天�
 - `GET /api/v1/<bot-slug>/inbox?since=<message_id>&limit=<1..200>`：拉新
   消息，时间升序，默认 50 条；`since` 传上次处理到的 id（不含该条）。
 - `GET /api/v1/<bot-slug>/inbox/<message_id>`：取单条。
+- `GET /api/v1/<bot-slug>/sent?since=<message_id>&limit=<1..200>`：查自己发
+  过的消息（inbox 不含自发消息）；单条
+  `GET /api/v1/<bot-slug>/sent/<message_id>`。
 - `POST /api/v1/<bot-slug>/outbox`：发回复，JSON `{"text", "mentions?",
   "reply_to_message_id?", "reply_in_thread?"}`，32KB 上限，30 次/分钟
   （超限 429）；202 即受理。

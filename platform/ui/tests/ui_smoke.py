@@ -133,6 +133,39 @@ try:
     check("API health with real token 200", s == 200, f"status={s} body={b[:80]}")
     s, h, b = get("/api/v1/testbot/inbox", headers={"Authorization": f"Bearer {real_token}"})
     check("API inbox with real token 200", s == 200, f"status={s} body={b[:80]}")
+    # 11b. sent endpoint: seed fixtures, list/single/pagination/auth
+    bots = json.load(open(os.path.join(DATA, "bots.json")))
+    slot = bots["testbot"]["slot"]
+    sent_dir = os.path.join(SLOTS, slot, "queues", "sent")
+    fix1 = {"message_id": "om_sent1", "sent_at": 1000,
+            "original": {"text": "first reply", "mentions": [], "reply_to_message_id": "om_q1"},
+            "response": {"code": 0, "data": {"secret": "must-not-leak"}}}
+    fix2 = {"message_id": "om_sent2", "sent_at": 2000,
+            "original": {"text": "second reply", "mentions": [{"id": "ou_x", "name": ""}],
+                         "reply_to_message_id": None},
+            "response": {"code": 0}}
+    json.dump(fix1, open(os.path.join(sent_dir, "job-1000-a.json"), "w"))
+    json.dump(fix2, open(os.path.join(sent_dir, "job-2000-b.json"), "w"))
+    s, h, b = get("/api/v1/testbot/sent", headers={"Authorization": f"Bearer {real_token}"})
+    d = json.loads(b) if s == 200 else {}
+    check("API sent list 200 + shaped, no response blob", s == 200 and d.get("count") == 2
+          and d["messages"][0]["message_id"] == "om_sent1"
+          and d["messages"][1]["text"] == "second reply"
+          and "response" not in b and "must-not-leak" not in b, f"status={s} body={b[:120]}")
+    s, h, b = get("/api/v1/testbot/sent?since=om_sent1&limit=1", headers={"Authorization": f"Bearer {real_token}"})
+    d = json.loads(b) if s == 200 else {}
+    check("API sent since+limit", s == 200 and d.get("count") == 1
+          and d["messages"][0]["message_id"] == "om_sent2", f"status={s} body={b[:80]}")
+    s, h, b = get("/api/v1/testbot/sent/om_sent1", headers={"Authorization": f"Bearer {real_token}"})
+    d = json.loads(b) if s == 200 else {}
+    check("API sent single 200", s == 200 and d.get("message_id") == "om_sent1"
+          and d.get("reply_to_message_id") == "om_q1", f"status={s} body={b[:80]}")
+    s, h, b = get("/api/v1/testbot/sent/om_nope", headers={"Authorization": f"Bearer {real_token}"})
+    check("API sent unknown -> 404", s == 404, f"status={s}")
+    s, h, b = get("/api/v1/otherbot/sent", headers={"Authorization": f"Bearer {real_token}"})
+    check("API sent wrong bot -> 404", s == 404, f"status={s}")
+    s, h, b = get("/api/v1/testbot/sent")
+    check("API sent no token -> 404", s == 404, f"status={s}")
     s, h, b = get("/api/v1/otherbot/health", headers={"Authorization": f"Bearer {real_token}"})
     check("API wrong bot -> 404", s == 404, f"status={s}")
     # 12. revoke
