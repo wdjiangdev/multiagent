@@ -32,7 +32,9 @@ root@<VPS 主机>`。队列目录：`<槽位目录>/queues/{inbox,outbox,sent,fa
 3. 去重：写回复前查 `sent/` 各记录 `original.reply_to_message_id` 与
    `outbox/` 各任务 `reply_to_message_id`，已有针对该 message_id 的最终
    回复或待发最终回复则跳过，绝不重复回。「确认收到」类的 ack 不算最终
-   回复：本会话先回了 ack 的，做完后仍须回结果。
+   回复：本会话先回了 ack 的，做完后仍须回结果。去重靠唤醒前先把 id
+   写进 seen，不用过期认领锁：锁防的是唤醒会话中途死亡的漏网（24 小时
+   实测零发生），而过期锁会让超过锁期的慢活被重复唤醒。
 4. 历史口径：`history_allowed=false` 时，不查群历史、不查记忆，遇历史
    提问回「未授权查看历史记录」；`=true` 时，被 @ 后自行搜寻群历史
    （inbox 文件；自己发过的消息读 `sent/`，中转不把自消息写进 inbox）
